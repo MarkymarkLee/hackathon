@@ -3,10 +3,12 @@ import argparse
 import sys
 import imutils
 import time
+import math
+import numpy as np
 
 #constants
-EDGE_THRESHOLD , CENTER_X_THRESHOLD , CENTER_Y_THRESHOLD ,PHI_THRESHOLD  = (30 , 250 , 150 , 0)
-EDGE_DIFF_TO_SPEED , CENTER_X_DIFF_TO_SPEED , CENTER_Y_DIFF_TO_SPEED ,PHI_DIFF_TO_SPEED = (1 , 0.1 , 0.2 , 0.1)
+CAM_TO_TAG_THRESHOLD , CENTER_X_THRESHOLD , CENTER_Y_THRESHOLD ,CENTER_ROTATE_THRESHOLD  = (30 , 250 , 150 , 10)
+DISTANCE_DIFF_TO_SPEED , X_SPEED , CENTER_X_DIFF_TO_SPEED , CENTER_Y_DIFF_TO_SPEED, ROTATION_SPEED= (1 , 20 , 0.1 , 0.2 , math.pi/2)
 ARUCO_DICT = {
     "DICT_4X4_50" : cv2.aruco.DICT_4X4_50 ,
     "DICT_4X4_100" : cv2.aruco.DICT_4X4_100 ,
@@ -34,28 +36,20 @@ class CameraDetector:
         self.ID_Recorded = []
         self.rvecs = None
         self.tvecs = None
-        self.phi = None
         self.center = dict()
         self.edge = dict()
-        self.phiDiff = 0
-        self.centerDiff = 0
-        self.edgeDiff = 0
-        self.phiSpeed = 0
-        self.centerSpeed = 0
-        self.edgeSpeed = 0
-        self.phiSpeedDiff = 0
-        self.centerSpeedDiff = 0
-        self.edgeSpeedDiff = 0
-        self.phiSpeedDiffDiff = 0
-        self.centerSpeedDiffDiff = 0
-        self.edgeSpeedDiffDiff = 0
-        self.standardEdge = {}
-        self.standardPhi = {}
+        self.standardDistance = {}
         self.standardCenter = {}
         self.X_speed = {}
         self.Y_speed = {}
         self.Z_speed = {}
-        self.phi_speed = {}
+        self.pitch_speed = {}
+        self.roll_speed = {}
+        self.yaw_speed = {}
+        self.mtx = []
+        self.dist = []
+        self.rvec = []
+        self.tvec = []
     
     def saveCurrentInfo(self , markerCorner , markerID):
         self.corners[markerID] = markerCorner.reshape((4, 2))
@@ -70,23 +64,31 @@ class CameraDetector:
         y_length = abs(topRight[ 1 ] - topLeft[ 1 ])
         self.edge[markerID] = ((x_length*x_length) + (y_length*y_length))**(0.5)
         return topRight, bottomRight, bottomLeft, topLeft
-
+    
+    def cameraCalibration(self):
+        cv_file = cv2.FileStorage("webcam.yaml", cv2.FILE_STORAGE_READ)
+        self.mtx = cv_file.getNode("camera_matrix").mat()
+        self.dist = cv_file.getNode("dist_coeff").mat()
+        cv_file.release()
+    
     def calculate_X_speed(self , markerID):
-        if self.standardEdge.get(markerID) is not None:
-            diffEdge = self.edge[markerID] - self.standardEdge[markerID]
-            # print( "diff edge : {}" .format(diffEdge))
-            if diffEdge > EDGE_THRESHOLD:
-                self.X_speed[markerID] = (diffEdge-EDGE_THRESHOLD) * EDGE_DIFF_TO_SPEED
+        index = self.ID_Recorded.index(markerID)
+        distance = self.tvec[index][0][2]*100
+        if self.standardDistance.get(markerID) is not None:
+            if distance-self.standardDistance[markerID] < (-1) * CAM_TO_TAG_THRESHOLD:
+                # self.X_speed[markerID] = (CAM_TO_TAG_THRESHOLD-distance) * DISTANCE_DIFF_TO_SPEED
+                self.X_speed[markerID] = X_SPEED
                 # print( "[INFO] Marker {} moved in positive X direction , speed : '{}'".format(markerID , self.X_speed[markerID]))
-            elif diffEdge < (-1)*EDGE_THRESHOLD:
-                self.X_speed[markerID] = (diffEdge+EDGE_THRESHOLD) * EDGE_DIFF_TO_SPEED
-                # print( "[INFO] Marker {} moved in negative X direction , speed : '{}'".format(markerID , self.X_speed[markerID]))
+            elif distance-self.standardDistance[markerID] > CAM_TO_TAG_THRESHOLD:
+                # self.X_speed[markerID] = (CAM_TO_TAG_THRESHOLD-distance) * DISTANCE_DIFF_TO_SPEED
+                self.X_speed[markerID] = X_SPEED * (-1)
+                # print( "[INFO] Marker {} moved in positive X direction , speed : '{}'".format(markerID , self.X_speed[markerID]))
             else:
                 self.X_speed[markerID] =  0
-        elif self.standardEdge.get(markerID) is None:
-            self.standardEdge[markerID] = self.edge[markerID]
+        if self.standardDistance.get(markerID) is None:
+            self.standardDistance[markerID] = distance
             self.X_speed[markerID] =  0
-
+        
     def calculate_Y_speed(self , markerID):
         if self.standardCenter.get(markerID) is not None:
             diffCenter = self.center[markerID][0] - self.standardCenter[markerID][0]
@@ -119,9 +121,54 @@ class CameraDetector:
             self.standardCenter[markerID] = self.center[markerID]
             self.Z_speed[markerID] =  0
 
-    def calculate_Phi_speed(self , markerID):
-        self.phi_speed[markerID] =  0
-
+    def calculate_Rotate_speed(self , markerID):
+        index = self.ID_Recorded.index(markerID)
+        
+        # degx = self.rvec[index][0][0]/math.pi*180
+        # degy = self.rvec[index][0][1]/math.pi*180
+        # degz = self.rvec[index][0][2]/math.pi*180*90/104
+        
+        # Euler angle to rotation matrix
+        R = np.zeros((3,3),dtype=np.float64)
+        cv2.Rodrigues(self.rvec[index],R)
+        sy = math.sqrt(R[0,0] * R[0,0] + R[1,0] * R[1,0])
+        singular = sy < 1e-6
+        if not singular:#偏航，俯仰，滚动
+            x = math.atan2(R[2, 1], R[2, 2])
+            y = math.atan2(-R[2, 0], sy)
+            z = math.atan2(R[1, 0], R[0, 0])
+        else:
+            x = math.atan2(-R[1, 2], R[1, 1])
+            y = math.atan2(-R[2, 0], sy)
+            z = 0
+        # # 偏航，俯仰，滚动换成角度
+        rx = x * 180.0 / math.pi
+        ry = y * 180.0 / math.pi
+        rz = z * 180.0 / math.pi
+        # print("pitch angle:" , rx, end = ' ')
+        # print("yaw angle:" , ry ,end = ' ')
+        # print("roll angle:" , rz)
+        
+        pitch_angle = (rx + 360) % 360
+        if (180 - CENTER_ROTATE_THRESHOLD < pitch_angle < 180 + CENTER_ROTATE_THRESHOLD):
+            self.pitch_speed[markerID] = 0
+        else:
+            self.pitch_speed[markerID] = ROTATION_SPEED * (1 if pitch_angle >= 180 else -1)
+            
+        yaw_angle = ry
+        if (-CENTER_ROTATE_THRESHOLD < yaw_angle < CENTER_ROTATE_THRESHOLD):
+            self.yaw_speed[markerID] = 0
+        else:
+            self.yaw_speed[markerID] = ROTATION_SPEED * (1 if yaw_angle >= 0 else -1)
+            
+        roll_angle = rz
+        if (-CENTER_ROTATE_THRESHOLD < roll_angle < CENTER_ROTATE_THRESHOLD):
+            self.roll_speed[markerID] = 0
+        else:
+            self.roll_speed[markerID] = ROTATION_SPEED * (1 if roll_angle >= 0 else -1)
+        
+    
+        
     def drawBoundingBox(self , frame , markerID , topLeft, topRight, bottomRight, bottomLeft):
         cv2.line(frame, topLeft, topRight, ( 0 , 255 , 0 ),  2 )
         cv2.line(frame, topRight, bottomRight, ( 0 , 255 , 0 ),  2 )
@@ -133,25 +180,32 @@ class CameraDetector:
     def getMovementFromFrame(self , showFrame):
         # print("in getMovementFromFrame")
         ret, frame = self.cap.read()
+        self.cameraCalibration()
+        # gray
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
             return False , {} , {} , {} , {} , []
-        frame , x_speed , y_speed , z_speed , phi_speed , id_recorded= self.detect(frame)
+        frame , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame)
         if showFrame:
             cv2.imshow( 'frame' , frame)
-        print( "x_speed : {} , y_speed : {} , z_speed : {} phi_speed : {} id_recorded : {}"
-                .format(x_speed , y_speed , z_speed , phi_speed , id_recorded))
-        return True , x_speed , y_speed , z_speed , phi_speed , id_recorded        
+        print( "x_speed : {} , y_speed : {} , z_speed : {} , yaw_speed : {} id_recorded : {}"
+                .format(x_speed , y_speed , z_speed , yaw_speed , id_recorded))
+        return True , x_speed , y_speed , z_speed , yaw_speed , id_recorded  
 
     def videoStream(self , showFrame):
         while True:
             # show the output image
             ret, frame = self.cap.read()
+            self.cameraCalibration()
+            # gray
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             if not ret:
                 print("Can't receive frame (stream end?). Exiting ...")
                 break
-            frame , x_speed , y_speed , z_speed , phi_speed , id_recorded= self.detect(frame)
-            print( "x_speed : {} , y_speed : {} , z_speed : {} phi_speed : {} , id_recorded : {}" .format(x_speed , y_speed , z_speed , phi_speed , id_recorded))
+            frame , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame)
+            print( "x_speed : {} , y_speed : {} , z_speed : {} , yaw_speed : {} id_recorded : {}"
+                .format(x_speed , y_speed , z_speed , yaw_speed , id_recorded))            
             if showFrame:
                 cv2.imshow( "Frame" , frame)
             key = cv2.waitKey( 1 ) & 0xFF
@@ -165,6 +219,9 @@ class CameraDetector:
         (corners, ids, rejected) = cv2.aruco.detectMarkers(frame, self.arucoDict, parameters=self.arucoParams)
         if len(corners) > 0:
             ids = ids.flatten()
+            self.rvec, self.tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, 0.035, self.mtx, self.dist)
+            (self.rvec-self.tvec).any()
+            
             for (markerCorner, markerID) in zip(corners, ids):
                 if markerID not in self.ID_Recorded:
                     self.ID_Recorded.append(markerID)
@@ -178,12 +235,14 @@ class CameraDetector:
                 # check if moving in y direction
                 self.calculate_Z_speed(markerID)
 
-                # check if moving in phi direction
-                self.calculate_Phi_speed(markerID)
+                # rotation
+                self.calculate_Rotate_speed(markerID)
+                
+                
                 #draw the bounding box of the ArUCo detection
                 self.drawBoundingBox(frame, markerID, topLeft, topRight, bottomRight, bottomLeft)
                 
-        return frame , self.X_speed , self.Y_speed , self.Z_speed , self.phi_speed , self.ID_Recorded
+        return frame , self.X_speed , self.Y_speed , self.Z_speed , self.pitch_speed, self.yaw_speed, self.roll_speed , self.ID_Recorded
 
 
 def add_arguments():
