@@ -1,0 +1,6 @@
+imutils
+opencv-python
+opencv-contrib-python
+argparse
+numpy
+pygame
