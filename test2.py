@@ -93,31 +93,31 @@ while True:
         #本来正确的计算方式如下，但是由于蜜汁相机标定的问题，实测偏航角度能最大达到104°所以现在×90/104这个系数作为最终角度
             # deg=rvec[j][0][2]/math.pi*180
             
-            degx=rvec[j][0][0]/math.pi*180*90/104
-            degy=rvec[j][0][1]/math.pi*180*90/104
+            degx=rvec[j][0][0]/math.pi*180
+            degy=rvec[j][0][1]/math.pi*180
             degz=rvec[j][0][2]/math.pi*180*90/104
             # 旋转矩阵到欧拉角
             R=np.zeros((3,3),dtype=np.float64)
             # print(rvec)
-            # cv2.Rodrigues(rvec[j],R)
+            cv2.Rodrigues(rvec[j],R)
             # print(rvec[j], R)
-            # sy=math.sqrt(R[0,0] * R[0,0] + R[1,0] * R[1,0])
-            # singular=sy< 1e-6
-            # if not singular:#偏航，俯仰，滚动
-            #     x = math.atan2(R[2, 1], R[2, 2])
-            #     y = math.atan2(-R[2, 0], sy)
-            #     z = math.atan2(R[1, 0], R[0, 0])
-            # else:
-            #     x = math.atan2(-R[1, 2], R[1, 1])
-            #     y = math.atan2(-R[2, 0], sy)
-            #     z = 0
+            sy=math.sqrt(R[0,0] * R[0,0] + R[1,0] * R[1,0])
+            singular=sy< 1e-6
+            if not singular:#偏航，俯仰，滚动
+                x = math.atan2(R[2, 1], R[2, 2])
+                y = math.atan2(-R[2, 0], sy)
+                z = math.atan2(R[1, 0], R[0, 0])
+            else:
+                x = math.atan2(-R[1, 2], R[1, 1])
+                y = math.atan2(-R[2, 0], sy)
+                z = 0
             # # 偏航，俯仰，滚动换成角度
-            # rx = x * 180.0 / math.pi
-            # ry = y * 180.0 / math.pi
-            # rz = z * 180.0 / math.pi
-            print("pitch angle:" , degx, end = ' ')
-            print("roll angle:" , degy ,end = ' ')
-            print("yaw angle:" , degz)
+            rx = x * 180.0 / math.pi
+            ry = y * 180.0 / math.pi
+            rz = z * 180.0 / math.pi
+            print("pitch angle:" , rx, end = ' ')
+            print("yaw angle:" , ry ,end = ' ')
+            print("roll angle:" , rz)
 
             # cv2.putText(frame,'deg_z:'+str(ry)+str('deg'),(0, 140), font, 1, (0, 255, 0), 2,
             #             cv2.LINE_AA)
