@@ -5,6 +5,10 @@ import imutils
 from imutils.video import VideoStream
 import time
 
+#constants
+(EDGE_THRESHOLD , CENTER_THRESHOLD , PHI_THRESHOLD)  = (30 , 300 , 0)
+(EDGE_DIFF_TO_SPEED , CENTER_DIFF_TO_SPEED , PHI_DIFF_TO_SPEED) = (2 , 0.1 , 0.1)
+
 ap = argparse.ArgumentParser()
 ap.add_argument("-t" , "--type" , type = str , default = "DICT_ARUCO_ORIGINAL" , help = "Type of AruCo tag to detect" )
 args = vars(ap.parse_args())
@@ -38,37 +42,74 @@ print( "[INFO] starting video stream..." )
 vs=VideoStream(src=0).start()
 time.sleep(2.0)
 
+standardEdge = {}
+standardPhi = {}
+standardCenter = {}
 while(True):
+    X_speed , Y_speed , Z_speed = (0 , 0 , 0)
     frame = vs.read()
     frame = imutils.resize(frame, width=1000)
     (corners, ids, rejected) = cv2.aruco.detectMarkers(frame, arucoDict, parameters=arucoParams)
     if len(corners) > 0:
         ids = ids.flatten()
         for (markerCorner, markerID) in zip(corners, ids):
+
             corners = markerCorner.reshape((4, 2))
             (topLeft, topRight, bottomRight, bottomLeft) = corners
             topRight = (int(topRight[ 0 ]), int(topRight[ 1 ]))
             bottomRight = (int(bottomRight[ 0 ]), int(bottomRight[ 1 ]))
             bottomLeft = (int(bottomLeft[ 0 ]), int(bottomLeft[ 1 ]))
             topLeft = (int(topLeft[ 0 ]), int(topLeft[ 1 ]))
+            centerX = int((topLeft[ 0 ] + bottomRight[ 0 ]) /  2.0 )
+            # centerY = int((topLeft[ 1 ] + bottomRight[ 1 ]) /  2.0 )
+            x_length = abs(topRight[ 0 ] - topLeft[ 0 ])
+            y_length = abs(topRight[ 1 ] - topLeft[ 1 ])
+            curEdge = ((x_length*x_length) + (y_length*y_length))**(0.5)
+            
+            # check if moving in x direction
+            if standardEdge.get(markerID) is not None:
+                diffEdge = curEdge - standardEdge[markerID]
+                print( "diff edge : {}" .format(diffEdge))
+                if diffEdge > EDGE_THRESHOLD:
+                    X_speed = (diffEdge-EDGE_THRESHOLD) * EDGE_DIFF_TO_SPEED
+                    print( "[INFO] Marker {} moved in positive X direction , speed : '{}'".format(markerID , X_speed))
+                elif diffEdge < (-1)*EDGE_THRESHOLD:
+                    X_speed = (diffEdge-EDGE_THRESHOLD) * EDGE_DIFF_TO_SPEED
+                    print( "[INFO] Marker {} moved in negative X direction , speed : '{}'".format(markerID , X_speed))
+            elif standardEdge.get(markerID) is None:
+                standardEdge[markerID] = curEdge
 
-            cv2.line(frame, topLeft, topRight, ( 0 , 255 , 0 ),  2 )
-            cv2.line(frame, topRight, bottomRight, ( 0 , 255 , 0 ),  2 )
-            cv2.line(frame, bottomRight, bottomLeft, ( 0 , 255 , 0 ),  2 )
-            cv2.line(frame, bottomLeft, topLeft, ( 0 , 255 , 0 ),  2 )
+            # check if moving in y direction
+            if standardCenter.get(markerID) is not None:
+                diffCenter = centerX - standardCenter[markerID]
+                # diffCenterY = centerY - standardCenter[markerID][1]
+                # diffCenter = ((diffCenterX*diffCenterX) + (diffCenterY*diffCenterY))**(0.5)
+                print( "diff center : {}" .format(diffCenter))
+                if diffCenter > CENTER_THRESHOLD:
+                    Y_speed = (diffCenter-CENTER_THRESHOLD) * CENTER_DIFF_TO_SPEED
+                    print( "[INFO] Marker {} moved in negative Y direction , speed : '{}'".format(markerID , Y_speed))
+                elif diffCenter < (-1)*CENTER_THRESHOLD:
+                    Y_speed = (diffCenter-CENTER_THRESHOLD) * CENTER_DIFF_TO_SPEED
+                    print( "[INFO] Marker {} moved in positive Y direction , speed : '{}'".format(markerID , Y_speed))
+            elif standardCenter.get(markerID) is None:
+                standardCenter[markerID] = centerX
 
-            cX = int((topLeft[ 0 ] + bottomRight[ 0 ]) /  2.0 )
-            cY = int((topLeft[ 1 ] + bottomRight[ 1 ]) /  2.0 )
-            cv2.circle(frame, (cX, cY),  4 , ( 0 , 0 , 255 ), - 1 )
+            
+            # cv2.line(frame, topLeft, topRight, ( 0 , 255 , 0 ),  2 )
+            # cv2.line(frame, topRight, bottomRight, ( 0 , 255 , 0 ),  2 )
+            # cv2.line(frame, bottomRight, bottomLeft, ( 0 , 255 , 0 ),  2 )
+            # cv2.line(frame, bottomLeft, topLeft, ( 0 , 255 , 0 ),  2 )
+            # cv2.circle(frame, (cX, cY),  4 , ( 0 , 0 , 255 ), - 1 )
+            # cv2.putText(frame, str(markerID), (topLeft[ 0 ] , topLeft[ 1 ] -  15 ), cv2.FONT_HERSHEY_SIMPLEX,  0.5 , ( 0 , 255 , 0 ),  2 )
+            # print( "[INFO] ID: {}  Center: {},{}".format(markerID, cX, cY))
 
-            cv2.putText(frame, str(markerID), (topLeft[ 0 ] , topLeft[ 1 ] -  15 ), cv2.FONT_HERSHEY_SIMPLEX,  0.5 , ( 0 , 255 , 0 ),  2 )
-            print( "[INFO] AruCo marker ID: {}".format(markerID))
+            (lastTopLeft, lastTopRight, lastBottomRight, lastBottomLeft) = corners
         
-        # show the output image
-        cv2.imshow( "Frame" , frame)
-        key = cv2.waitKey( 1 ) & 0xFF
-        if key == ord( "q" ):
-            break
+    # show the output image
+    cv2.imshow( "Frame" , frame)
+    key = cv2.waitKey( 1 ) & 0xFF
+    if key == ord( "q" ):
+        break
 
     # else :
     #     print( "[INFO] No AruCo markers found" )
