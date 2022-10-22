@@ -116,7 +116,7 @@ def main():
         else:
             for id in id_list:
                 if(ball.ID == id):
-                    ball.xspeed = x_speed[id]
+                    ball.yspeed = x_speed[id]
                     ball.yspeed = y_speed[id]
                     ball.zspeed = z_speed[id]
                     ball.omega = omega[id]
