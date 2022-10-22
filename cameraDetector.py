@@ -1,3 +1,4 @@
+from pickle import NONE
 import cv2
 import argparse
 import sys
@@ -7,7 +8,7 @@ import math
 import numpy as np
 
 #constants
-CAM_TO_TAG_THRESHOLD , CENTER_X_THRESHOLD , CENTER_Y_THRESHOLD ,CENTER_ROTATE_THRESHOLD  = (30 , 250 , 150 , 10)
+CAM_TO_TAG_THRESHOLD , CENTER_X_THRESHOLD , CENTER_Y_THRESHOLD ,CENTER_ROTATE_THRESHOLD  = (10 , 250 , 150 , 10)
 DISTANCE_DIFF_TO_SPEED , X_SPEED , CENTER_X_DIFF_TO_SPEED , CENTER_Y_DIFF_TO_SPEED, ROTATION_SPEED= (1 , 20 , 0.1 , 0.2 , math.pi/2)
 ARUCO_DICT = {
     "DICT_4X4_50" : cv2.aruco.DICT_4X4_50 ,
@@ -34,8 +35,6 @@ class CameraDetector:
         self.arucoParams = arucoParams
         self.corners = dict()
         self.ID_Recorded = []
-        self.rvecs = None
-        self.tvecs = None
         self.center = dict()
         self.edge = dict()
         self.standardDistance = {}
@@ -186,12 +185,13 @@ class CameraDetector:
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
             return False , {} , {} , {} , {} , []
-        frame , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame)
+        frame,yesid , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame)
         if showFrame:
             cv2.imshow( 'frame' , frame)
         print( "x_speed : {} , y_speed : {} , z_speed : {} , yaw_speed : {} id_recorded : {}"
                 .format(x_speed , y_speed , z_speed , yaw_speed , id_recorded))
-        return True , x_speed , y_speed , z_speed , yaw_speed , id_recorded  
+        print(yesid)
+        return True,yesid , x_speed , y_speed , z_speed ,pitch_speed ,  yaw_speed , roll_speed , id_recorded  
 
     def videoStream(self , showFrame):
         while True:
@@ -217,7 +217,9 @@ class CameraDetector:
     def detect(self, frame):
         frame = imutils.resize(frame, width=1000)
         (corners, ids, rejected) = cv2.aruco.detectMarkers(frame, self.arucoDict, parameters=self.arucoParams)
+        yestag = False
         if len(corners) > 0:
+            yestag = True
             ids = ids.flatten()
             self.rvec, self.tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners, 0.035, self.mtx, self.dist)
             (self.rvec-self.tvec).any()
@@ -242,7 +244,21 @@ class CameraDetector:
                 #draw the bounding box of the ArUCo detection
                 self.drawBoundingBox(frame, markerID, topLeft, topRight, bottomRight, bottomLeft)
                 
-        return frame , self.X_speed , self.Y_speed , self.Z_speed , self.pitch_speed, self.yaw_speed, self.roll_speed , self.ID_Recorded
+        return frame ,yestag, self.X_speed , self.Y_speed , self.Z_speed , self.pitch_speed, self.yaw_speed, self.roll_speed , self.ID_Recorded
+
+    def reset(self):
+        self.corners = dict()
+        self.ID_Recorded = []
+        self.center = dict()
+        self.edge = dict()
+        self.standardDistance = {}
+        self.standardCenter = {}
+        self.X_speed = {}
+        self.Y_speed = {}
+        self.Z_speed = {}
+        self.pitch_speed = {}
+        self.roll_speed = {}
+        self.yaw_speed = {}
 
 
 def add_arguments():
