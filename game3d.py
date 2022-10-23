@@ -6,7 +6,6 @@ import argparse
 import time
 import math
 
-
 #constants
 ARUCO_DICT = {
     "DICT_4X4_50" : cv2.aruco.DICT_4X4_50 ,
@@ -77,16 +76,16 @@ class FirstPersonControllera(Entity):
 
         ttime = time.time_ns()
 
-        data = self.cd.getMovementFromFrame(False,(ttime-self.time)/1000000000)
+        data = self.cd.getMovementFromFrame((ttime-self.time)/1000000000)
         self.time = ttime
-        print(data)
+        # print(data)
 
-        if data[0] and data[1]:
+        if data["good"] and data["yesid"]:
 
-            x_speed , y_speed , z_speed ,pitch_speed ,  yaw_speed , roll_speed , theta  = data[2:]
+            x_speed , y_speed , z_speed  = data["x_speed"], data["y_speed"], data["z_speed"]
+            pitch_speed ,  yaw_speed , roll_speed , theta  = data["pitch_speed"],data["yaw_speed"],data["roll_speed"],data["theta"]
 
-
-            self.camera_pivot.rotation_x += average(pitch_speed) * 0.2 * math.pi/90
+            self.camera_pivot.rotation_x += average(pitch_speed) * 0.4 * math.pi/90
             self.camera_pivot.rotation_x = clamp(self.camera_pivot.rotation_x, -90, 90)
             # self.camera_pivot.rotation_y += average(yaw_speed) * 0.2
             self.camera_pivot.rotation_y = theta
@@ -99,6 +98,8 @@ class FirstPersonControllera(Entity):
                 self.forward * axspeed
                 +self.right * ayspeed
                 ).normalized()
+
+            # print(self.direction)
 
             self.speed = sqrt(axspeed**2+ayspeed**2) * 0.05
 
