@@ -1,12 +1,13 @@
+from http.client import ImproperConnectionState
 from ursina import *
 from cameraDetector import CameraDetector
 import cv2
 import argparse
+import time
+import math
 
 
 #constants
-CAM_TO_TAG_THRESHOLD , CENTER_X_THRESHOLD , CENTER_Y_THRESHOLD ,CENTER_ROTATE_THRESHOLD  = (30 , 250 , 150 , 10)
-DISTANCE_DIFF_TO_SPEED , X_SPEED , CENTER_X_DIFF_TO_SPEED , CENTER_Y_DIFF_TO_SPEED, ROTATION_SPEED= (1 , 20 , 0.1 , 0.2 , math.pi/2)
 ARUCO_DICT = {
     "DICT_4X4_50" : cv2.aruco.DICT_4X4_50 ,
     "DICT_4X4_100" : cv2.aruco.DICT_4X4_100 ,
@@ -58,6 +59,8 @@ class FirstPersonControllera(Entity):
         self.jumping = False
         self.air_time = 0
 
+        self.time = time.time_ns()
+
         self.cd = 0
 
         for key, value in kwargs.items():
@@ -72,26 +75,32 @@ class FirstPersonControllera(Entity):
 
     def update(self):
 
-        data = self.cd.getMovementFromFrame(False)
+        ttime = time.time_ns()
+
+        data = self.cd.getMovementFromFrame(False,(ttime-self.time)/1000000000)
+        self.time = ttime
         print(data)
 
         if data[0] and data[1]:
 
-            x_speed , y_speed , z_speed ,pitch_speed ,  yaw_speed , roll_speed , id_recorded  = data[2:]
+            x_speed , y_speed , z_speed ,pitch_speed ,  yaw_speed , roll_speed , theta  = data[2:]
 
 
-            self.camera_pivot.rotation_x += average(pitch_speed) * 0.1
-            self.camera_pivot.rotation_x= clamp(self.camera_pivot.rotation_x, -90, 90)
-            self.camera_pivot.rotation_y += average(yaw_speed) * 0.2
+            self.camera_pivot.rotation_x += average(pitch_speed) * 0.2 * math.pi/90
+            self.camera_pivot.rotation_x = clamp(self.camera_pivot.rotation_x, -90, 90)
+            # self.camera_pivot.rotation_y += average(yaw_speed) * 0.2
+            self.camera_pivot.rotation_y = theta
+            # theta = self.camera_pivot.rotation_y / 180 * pi + pi/2
 
             axspeed = average(x_speed)
             ayspeed = average(y_speed)
+
             self.direction = Vec3(
-                self.forward * axspeed * sin(self.camera_pivot.rotation_y/180*pi)
-                + self.right * ayspeed * cos(self.camera_pivot.rotation_y/180*pi)
+                self.forward * axspeed
+                +self.right * ayspeed
                 ).normalized()
 
-            self.speed = sqrt(axspeed**2+ayspeed**2) * 0.01
+            self.speed = sqrt(axspeed**2+ayspeed**2) * 0.05
 
             feet_ray = raycast(self.position+Vec3(0,0.5,0), self.direction, ignore=(self,), distance=.5, debug=False)
             head_ray = raycast(self.position+Vec3(0,self.height-.1,0), self.direction, ignore=(self,), distance=.5, debug=False)
@@ -109,6 +118,9 @@ class FirstPersonControllera(Entity):
                 self.position += move_amount
 
             self.position += self.direction * self.speed * time.dt
+
+            if average(z_speed)<0:
+                self.jump()
 
 
         if self.gravity:

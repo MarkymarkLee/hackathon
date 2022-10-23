@@ -1,4 +1,4 @@
-from pickle import NONE
+from cmath import pi
 import cv2
 import argparse
 import sys
@@ -7,9 +7,11 @@ import time
 import math
 import numpy as np
 
+
 #constants
-CAM_TO_TAG_THRESHOLD , CENTER_X_THRESHOLD , CENTER_Y_THRESHOLD ,CENTER_ROTATE_THRESHOLD  = (10 , 200 , 100 , 10)
-DISTANCE_DIFF_TO_SPEED , X_SPEED , CENTER_X_DIFF_TO_SPEED , CENTER_Y_DIFF_TO_SPEED, ROTATION_SPEED= (1 , 20 , 0.1 , 0.2 , math.pi/2)
+CAM_TO_TAG_THRESHOLD , CENTER_X_THRESHOLD , CENTER_Y_THRESHOLD ,CENTER_ROTATE_THRESHOLD  = (10 , 150 , 75 , 20)
+DISTANCE_DIFF_TO_SPEED , X_SPEED , CENTER_X_DIFF_TO_SPEED , CENTER_Y_DIFF_TO_SPEED, ROTATION_SPEED= (1 , 20 , 0.1 , 0.2 , 20)
+
 ARUCO_DICT = {
     "DICT_4X4_50" : cv2.aruco.DICT_4X4_50 ,
     "DICT_4X4_100" : cv2.aruco.DICT_4X4_100 ,
@@ -28,8 +30,9 @@ ARUCO_DICT = {
     "DICT_7X7_250" : cv2.aruco.DICT_7X7_250 ,
     "DICT_7X7_1000" : cv2.aruco.DICT_7X7_1000 
 }
+
 class CameraDetector:
-    def __init__(self, cap, arucoDict, arucoParams, FPS):
+    def __init__(self, cap, arucoDict, arucoParams):
         self.cap = cap
         self.arucoDict = arucoDict
         self.arucoParams = arucoParams
@@ -40,7 +43,7 @@ class CameraDetector:
         self.cameraCenter = (1000/2, cap.get(4)/cap.get(3)*1000/2)
         self.cameraYawDeg = 0
         self.edge = dict()
-        self.standardDistance = {492: 40}
+        self.standardDistance = {490: 40}
         # self.standardCenter = {}
         self.X_speed = {}
         self.Y_speed = {}
@@ -52,7 +55,6 @@ class CameraDetector:
         self.dist = []
         self.rvec = []
         self.tvec = []
-        self.FPS = FPS
     
     def saveCurrentInfo(self , markerCorner , markerID):
         self.corners[markerID] = markerCorner.reshape((4, 2))
@@ -80,13 +82,13 @@ class CameraDetector:
         x_speed, y_speed = 0, 0
         if distance - self.standardDistance[markerID] < (-1) * CAM_TO_TAG_THRESHOLD:
             # self.X_speed[markerID] = (CAM_TO_TAG_THRESHOLD-distance) * DISTANCE_DIFF_TO_SPEED
-            x_speed += X_SPEED * math.cos(self.cameraYawDeg * math.pi / 180)
-            y_speed += X_SPEED * math.sin(self.cameraYawDeg * math.pi / 180)
+            x_speed += X_SPEED * math.cos(self.cameraYawDeg*math.pi/180)
+            y_speed += X_SPEED * math.sin(self.cameraYawDeg*math.pi/180)
             # print( "[INFO] Marker {} moved in positive X direction , speed : '{}'".format(markerID , self.X_speed[markerID]))
         elif distance - self.standardDistance[markerID] > CAM_TO_TAG_THRESHOLD:
             # self.X_speed[markerID] = (CAM_TO_TAG_THRESHOLD-distance) * DISTANCE_DIFF_TO_SPEED
-            x_speed += X_SPEED * (-1) * math.cos(self.cameraYawDeg * math.pi / 180)
-            y_speed += X_SPEED * (-1) * math.sin(self.cameraYawDeg * math.pi / 180)
+            x_speed += X_SPEED * (-1) * math.cos(self.cameraYawDeg*math.pi/180)
+            y_speed += X_SPEED * (-1) * math.sin(self.cameraYawDeg*math.pi/180)
             # print( "[INFO] Marker {} moved in positive X direction , speed : '{}'".format(markerID , self.X_speed[markerID]))
         
         return x_speed, y_speed
@@ -97,12 +99,12 @@ class CameraDetector:
         diffCenter = self.center[markerID][0] - self.cameraCenter[0]
         # print( "diff center : {}" .format(diffCenter))
         if diffCenter > CENTER_X_THRESHOLD:
-            y_speed += (diffCenter-CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.cos(-self.cameraYawDeg * math.pi / 180) * (-1)
-            x_speed += (diffCenter-CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.sin(-self.cameraYawDeg * math.pi / 180) * (-1)
+            y_speed += (diffCenter-CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.cos(-self.cameraYawDeg*math.pi/180) * (-1)
+            x_speed += (diffCenter-CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.sin(-self.cameraYawDeg*math.pi/180) * (-1)
             # print( "[INFO] Marker {} moved in negative Y direction , speed : '{}'".format(markerID , self.Y_speed[markerID]))
         elif diffCenter < (-1)*CENTER_X_THRESHOLD:
-            y_speed += (diffCenter+CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.cos(-self.cameraYawDeg * math.pi / 180) * (-1)
-            x_speed += (diffCenter+CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.sin(-self.cameraYawDeg * math.pi / 180) * (-1)
+            y_speed += (diffCenter+CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.cos(-self.cameraYawDeg*math.pi/180) * (-1)
+            x_speed += (diffCenter+CENTER_X_THRESHOLD) * CENTER_X_DIFF_TO_SPEED * math.sin(-self.cameraYawDeg*math.pi/180) * (-1)
             # print( "[INFO] Marker {} moved in positive Y direction , speed : '{}'".format(markerID , self.Y_speed[markerID]))
         return x_speed, y_speed
 
@@ -118,12 +120,8 @@ class CameraDetector:
         else:
             self.Z_speed[markerID] =  0
 
-    def calculate_Rotate_speed(self , markerID):
+    def calculate_Rotate_speed(self , markerID, timeDiff):
         index = self.ID_Recorded.index(markerID)
-        
-        # degx = self.rvec[index][0][0]/math.pi*180
-        # degy = self.rvec[index][0][1]/math.pi*180
-        # degz = self.rvec[index][0][2]/math.pi*180*90/104
         
         # Euler angle to rotation matrix
         R = np.zeros((3,3),dtype=np.float64)
@@ -150,7 +148,7 @@ class CameraDetector:
         if (180 - CENTER_ROTATE_THRESHOLD < pitch_angle < 180 + CENTER_ROTATE_THRESHOLD):
             self.pitch_speed[markerID] = 0
         else:
-            self.pitch_speed[markerID] = ROTATION_SPEED * (-1 if pitch_angle >= 180 else 1)
+            self.pitch_speed[markerID] = ROTATION_SPEED * (1 if pitch_angle >= 180 else -1)
             self.Z_speed[markerID] = 0
             
         yaw_angle = ry
@@ -161,7 +159,7 @@ class CameraDetector:
             self.yaw_speed[markerID] = ROTATION_SPEED * (1 if yaw_angle >= 0 else -1)
             self.Y_speed[markerID] = 0
             self.X_speed[markerID] = 0
-        self.cameraYawDeg += self.yaw_speed[markerID] / self.FPS
+        self.cameraYawDeg -= self.yaw_speed[markerID] * timeDiff
             
         roll_angle = rz
         if (-CENTER_ROTATE_THRESHOLD < roll_angle < CENTER_ROTATE_THRESHOLD):
@@ -179,23 +177,46 @@ class CameraDetector:
         cv2.circle(frame, (self.center[markerID][0], self.center[markerID][1]),  4 , ( 0 , 0 , 255 ), - 1 )
         cv2.putText(frame, str(markerID), (topLeft[ 0 ] , topLeft[ 1 ] -  15 ), cv2.FONT_HERSHEY_SIMPLEX,  0.5 , ( 0 , 255 , 0 ),  2 )
     
-    def getMovementFromFrame(self , showFrame):
+    def getMovementFromFrame(self , timeDiff, mode, showFrame=False ):
         # print("in getMovementFromFrame")
         ret, frame = self.cap.read()
         self.cameraCalibration()
+        data = {
+            "good":False,
+            "yesid" : False,
+            "x_speed": {},"y_speed": {},"z_speed": {},
+            "pitch_speed": {},"yaw_speed": {},"roll_speed": {},
+            "forward": False, "backward":False,
+            "moveleft":False, "moveright":False,
+            "turnleft":False, "turnright":False,
+            "jump":False
+        }
         # gray
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
-            return False , {} , {} , {} , {} , []
-        frame,yesid , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame)
+            return data
+        frame, yesid , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame , timeDiff)
+        
+        data = {
+            "good":True,
+            "yesid" : yesid,
+            "x_speed": x_speed,"y_speed": y_speed,"z_speed": z_speed,
+            "pitch_speed": pitch_speed,"yaw_speed": yaw_speed,"roll_speed": roll_speed,
+            "forward": False, "backward":False,
+            "moveleft":False, "moveright":False,
+            "turnleft":False, "turnright":False,
+            "jump":False
+        }
+        
         if showFrame:
             cv2.imshow( 'frame' , frame)
-        print( "x_speed : {} , y_speed : {} , z_speed : {} , yaw_speed : {} id_recorded : {}"
-                .format(x_speed , y_speed , z_speed , yaw_speed , id_recorded))
-        return True , x_speed , y_speed , z_speed , yaw_speed ,pitch_speed, id_recorded  
+        # print( "x_speed : {} , y_speed : {} , z_speed : {} , yaw_speed : {} , cameraDeg : {} , id_recorded : {}"
+        #         .format(x_speed , y_speed , z_speed , yaw_speed ,self.cameraYawDeg, id_recorded)) 
 
-    def videoStream(self , showFrame):
+        return True , yesid , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed ,self.cameraYawDeg  
+
+    def videoStream(self , showFrame , timeDiff):
         while True:
             # show the output image
             ret, frame = self.cap.read()
@@ -206,7 +227,7 @@ class CameraDetector:
             if not ret:
                 print("Can't receive frame (stream end?). Exiting ...")
                 break
-            frame , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame)
+            frame , x_speed , y_speed , z_speed , pitch_speed , yaw_speed, roll_speed, id_recorded= self.detect(frame , timeDiff)
             print( "x_speed : {} , y_speed : {} , z_speed : {} , yaw_speed : {} , cameraDeg : {} , id_recorded : {}"
                 .format(x_speed , y_speed , z_speed , yaw_speed ,self.cameraYawDeg, id_recorded)) 
             # print(self.rvec,self.tvec)
@@ -218,9 +239,11 @@ class CameraDetector:
         cv2.destroyAllWindows()
         self.cap.release()
 
-    def detect(self, frame):
+    def detect(self, frame , timeDiff):
         frame = imutils.resize(frame, self.cameraWidth)
-        (corners, ids, rejected) = cv2.aruco.detectMarkers(frame, self.arucoDict, parameters=self.arucoParams)
+        (corners, ids, _) = cv2.aruco.detectMarkers(frame, self.arucoDict, parameters=self.arucoParams)
+        yestag = False
+        self.cameraYawDeg = 0
         # print(corners)
         if len(corners) > 0:
             yestag = True
@@ -234,7 +257,7 @@ class CameraDetector:
                 (topLeft, topRight, bottomRight, bottomLeft) = self.saveCurrentInfo(markerCorner , markerID)
                 # check if moving in x direction
                 x1, y1 = self.calculate_X_speed(markerID)
-
+                
                 # check if moving in y direction
                 x2, y2 = self.calculate_Y_speed(markerID)
                 self.X_speed[markerID], self.Y_speed[markerID] = x1+x2, y1+y2
@@ -243,8 +266,7 @@ class CameraDetector:
                 self.calculate_Z_speed(markerID)
 
                 # rotation
-                self.calculate_Rotate_speed(markerID)
-                
+                self.calculate_Rotate_speed(markerID , timeDiff)
                 
                 #draw the bounding box of the ArUCo detection
                 self.drawBoundingBox(frame, markerID, topLeft, topRight, bottomRight, bottomLeft)
@@ -256,7 +278,7 @@ class CameraDetector:
         self.ID_Recorded = []
         self.center = dict()
         self.edge = dict()
-        self.standardDistance = {}
+        self.standardDistance = {490:40}
         self.standardCenter = {}
         self.X_speed = {}
         self.Y_speed = {}
@@ -264,11 +286,12 @@ class CameraDetector:
         self.pitch_speed = {}
         self.roll_speed = {}
         self.yaw_speed = {}
+        self.cameraYawDeg = 0
 
 
 def add_arguments():
     ap = argparse.ArgumentParser()
-    ap.add_argument( "-t" , "--type" , type=str, default= "DICT_4X4_50" ,
+    ap.add_argument( "-t" , "--type" , type=str, default= "DICT_7X7_1000" ,
         help= "type of ArUCo tag to detect" )
     args = vars(ap.parse_args())
     return args
@@ -290,12 +313,10 @@ def setup():
     return arucoDict,arucoParams
 
 
-
 def main():
     arucoDict,arucoParams = setup()
     print( "[INFO] starting video stream..." )
     cap = cv2.VideoCapture(0)
-    time.sleep(2.0)
     cameraDetector = CameraDetector(cap , arucoDict, arucoParams, 60)
     cameraDetector.videoStream(True)
 
